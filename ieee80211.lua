@@ -1,85 +1,122 @@
 do
-  local stations = {}
-  local access_points = {}
+  local ieee80211_types = {
+    management = 0,
+    control = 1,
+    data = 2
+  }
+  local channel_to_mhz = {
+      [1] = 2412,
+      [2] = 2417,
+      [3] = 2422,
+      [4] = 2427,
+      [5] = 2432,
+      [6] = 2437,
+      [7] = 2442,
+      [8] = 2447,
+      [9] = 2452,
+      [10] = 2457,
+      [11] = 2462,
+      [12] = 2467,
+      [13] = 2472,
+  }
+  mhz_to_channel = {}
+  for channel, freq in ipairs(channel_to_mhz) do
+      mhz_to_channel[freq] = channel
+  end
 
-  local current_channel = 1
-  local last_channel_change = os.time()
+  local models = require "models"
 
+  local time_channel_change = nil
   local wlan_fc_type_f = Field.new("wlan.fc.type")
   local wlan_fc_subtype_f = Field.new("wlan.fc.subtype")
   local wlan_sa_f = Field.new("wlan.sa")
-
-  local last_print = os.time()
+  local wlan_fc_tods_f = Field.new("wlan.fc.tods")
+  local wlan_fc_fromds_f = Field.new("wlan.fc.fromds")
+  local wlan_da_f = Field.new("wlan.da")
+  local wlan_bssid_f = Field.new("wlan.bssid")
+  local wlan_mgt_ssid_f = Field.new("wlan_mgt.ssid")
+  local radiotap_freq_f = Field.new("radiotap.channel.freq")
 
   local tap = Listener.new(nil, nil)
-
-  function display_sorted(address_list)
-    local _address_list = {}
-    local current_time = os.time()
-
-    for addr, last_seen in pairs(address_list) do
-      if not access_points[addr] then
-        table.insert(_address_list, {addr = addr, last_seen = last_seen})
-      end
-    end
-
-    local cmp = function (a, b)
-      return a.last_seen < b.last_seen
-    end
-
-    table.sort(_address_list, cmp)
-
-    os.execute("clear")
-
-    for key, val in pairs(access_points) do
-      print(key)
-    end
-
-    print("\n")
-
-    print("Address\t\t\tLast seen (in seconds)")
-    for i, entry in ipairs(_address_list) do
-      print(entry.addr .. "\t" .. current_time - entry.last_seen)
-    end
-  end
 
   function tap.draw()
   end
 
   function tap.packet(pinfo, tvb, frame)
+    local time_retrieved = math.floor(pinfo.abs_ts)
     local fc_type = wlan_fc_type_f()
     local fc_subtype = wlan_fc_subtype_f()
     local sa = wlan_sa_f()
-    local current_time = os.time()
+    local da = wlan_da_f()
+    local fc_fromds = wlan_fc_fromds_f()
+    local fc_tods = wlan_fc_tods_f()
+    local bssid = wlan_bssid_f()
+    local radiotap_freq = radiotap_freq_f()
+    local wlan_mgt_ssid = wlan_mgt_ssid_f()
 
     if not fc_type or not fc_subtype or not sa then
       return
     end
 
-    if fc_type.value == 0 and fc_subtype.value == 8 then
-      access_points[tostring(sa)] = pinfo.abs_ts
-    else
+    -- Beacon
+    if fc_type.value == ieee80211_types.management and fc_subtype.value == 8 then
+      models.AccessPoint:create{
+        sensor_name = 'sensor1',
+        time_seen = time_retrieved,
+        bssid = tostring(bssid),
+        name = wlan_mgt_ssid.value,
+      }
+    end
 
-      stations[tostring(sa)] = pinfo.abs_ts
+    -- Probe request
+    if fc_type.value == ieee80211_types.management and fc_subtype.value == 4 then
+      models.NodeProbe:create{
+        sensor_name = 'sensor1',
+        time_seen = time_retrieved,
+        mac_address = tostring(sa),
+        name = wlan_mgt_ssid.value
+      }
+    end
 
-      if current_time - last_print > 1 then
-        display_sorted(stations)
-        last_print = os.time()
+    -- Data
+    if fc_type.value == ieee80211_types.data then
+      if fc_tods.value and not fc_fromds.value then
+        models.NodeSeen:create{
+          sensor_name = 'sensor1',
+          time_seen = time_retrieved,
+          mac_address = tostring(sa),
+          bssid = tostring(bssid),
+          associated = true
+        }
+      elseif fc_fromds.value and not fc_tods.value then
+        models.NodeSeen:create{
+          sensor_name = 'sensor1',
+          time_seen = time_retrieved,
+          mac_address = tostring(da),
+          bssid = tostring(bssid),
+          associated = true
+        }
+      else
       end
     end
 
-    if current_time - last_channel_change > 1 then
-      -- iterate trough channels 1 up to and including 13
-      local set_channel = 1 + (current_channel % 14)
+    -- Always AP
+    -- Beacon frame: type: 0 subtype 8
+    -- Probe Response frame: type: 0 subtype 5
 
-      os.execute("ifconfig run0 chan " .. set_channel)
-
-      last_channel_change = os.time()
-      current_channel = set_channel
-    end
+--    -- Beacon frame.
+--    if fc_type.value == 0 and fc_subtype.value == 8 then
+--      -- access point
+--    else
+--      -- station
+--      register_node(tostring(sa), time_retrieved)
+--    end
+--
+--    if sa == bssid then
+--    else if da == bssid then
+--    end
   end
 
   function tap.reset()
-    debug("reset")
   end
 end

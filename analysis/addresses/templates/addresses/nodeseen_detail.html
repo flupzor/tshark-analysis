@@ -1,0 +1,16 @@
+<table>
+{% for bssid in bssids %}
+  <tr>
+    <td>{{ bssid.bssid }}</td>
+    <td>{{ bssid.name }}</td>
+    <td></td>
+  </tr>
+  {% for block in bssid.blocks %}
+  <tr>
+    <td></td>
+    <td>{{ block.start_block }}</td>
+    <td>{{ block.end_block }}</td>
+  </tr>
+  {% endfor %}
+{% endfor %}
+</table>

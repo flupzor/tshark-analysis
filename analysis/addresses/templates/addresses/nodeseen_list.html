@@ -1,0 +1,21 @@
+<html>
+  <head>
+  </head>
+  <body>
+
+  <table>
+    {% for node in nodes_per_ap %}
+      <tr><td>{{ node.ap }} </td></tr>
+      {% for node in node.nodes %}
+      <tr>
+        <td></td>
+        <td><a href="{{ node.url }}">{{ node.mac_address }}</a></td>
+        <td>{{ node.times_seen_sum }}</td>
+        <td>{{ node.first_seen }}</td>
+        <td>{{ node.last_seen }}</td>
+      </tr>
+      {% endfor %}
+    {% endfor %}
+  </table>
+  </body>
+</html>
